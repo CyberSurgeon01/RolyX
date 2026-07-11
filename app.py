@@ -7,9 +7,26 @@ import numpy as np
 import pickle
 import re
 import hashlib
+import html
+import logging
+import sys
 import scipy.sparse as sp
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import hstack, csr_matrix
+
+# ═════════════════════════════════════════════════════════════
+# LOGGING — server-side only, never shown to the end user.
+# Streamlit's default logger is easy to lose in noisy console output,
+# so this app gets its own named logger with a clear format.
+# ═════════════════════════════════════════════════════════════
+logger = logging.getLogger("rolesense")
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    ))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 # ═════════════════════════════════════════════════════════════
 # PAGE CONFIG
@@ -23,6 +40,15 @@ st.set_page_config(
 
 MODELS_DIR = "models/"
 APP_VERSION = "2.1"
+MAX_RESUME_MB = 5
+MAX_RESUME_BYTES = MAX_RESUME_MB * 1024 * 1024
+
+# Input length caps — generous enough for real use, small enough to keep
+# TF-IDF transforms and regex scans fast and bounded per request.
+MAX_SKILLS_CHARS = 500
+MAX_TITLE_CHARS = 150
+MAX_DESCRIPTION_CHARS = 8000
+MAX_JOB_NAME_CHARS = 150
 
 
 # ═════════════════════════════════════════════════════════════
@@ -401,9 +427,19 @@ try:
     (tfidf, tfidf_matrix, salary_model, title_tfidf,
      le_exp, le_wtype, cat_model, cat_tfidf, le_industry, jobs) = load_all()
 except FileNotFoundError as e:
+    logger.error("Model/data file missing: %s", e.filename, exc_info=True)
     st.error(
         f"Couldn't load one of the model/data files from `{MODELS_DIR}` "
         f"({e.filename}). Make sure the `models/` folder is present next to this app."
+    )
+    st.stop()
+except Exception:
+    # Don't leak internal tracebacks (paths, library internals, etc.) to end users —
+    # but do capture the real error server-side so it's debuggable.
+    logger.error("Failed to load models/data on startup", exc_info=True)
+    st.error(
+        "RoleSense couldn't start because the model/data files failed to load. "
+        "Please contact support or check the deployment logs for details."
     )
     st.stop()
 
@@ -493,9 +529,9 @@ def recommend_jobs(user_skills, job_title=None,
     query_vec = tfidf.transform([clean_text(" ".join(parts))])
     scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
     mask = np.ones(len(jobs), dtype=bool)
-    if work_type and work_type != "Any":
+    if work_type and work_type != "Any" and 'formatted_work_type' in jobs.columns:
         mask &= jobs['formatted_work_type'].str.contains(work_type, case=False, na=False)
-    if remote_only:
+    if remote_only and 'remote_allowed' in jobs.columns:
         mask &= (jobs['remote_allowed'] == 1)
     filtered = scores.copy()
     filtered[~mask] = -1
@@ -512,8 +548,16 @@ def recommend_jobs(user_skills, job_title=None,
 
 def predict(description, experience_level, work_type):
     desc = clean_text(description)
-    exp_enc = le_exp.transform([experience_level])[0] if experience_level in le_exp.classes_ else 0
-    wtype_enc = le_wtype.transform([work_type])[0] if work_type in le_wtype.classes_ else 0
+    if experience_level in le_exp.classes_:
+        exp_enc = le_exp.transform([experience_level])[0]
+    else:
+        logger.warning("Unrecognized experience_level %r, defaulting to class 0", experience_level)
+        exp_enc = 0
+    if work_type in le_wtype.classes_:
+        wtype_enc = le_wtype.transform([work_type])[0]
+    else:
+        logger.warning("Unrecognized work_type %r, defaulting to class 0", work_type)
+        wtype_enc = 0
     title_feat = title_tfidf.transform([desc])
     struct_feat = csr_matrix([[exp_enc, wtype_enc, 0]])
     X = hstack([struct_feat, title_feat])
@@ -544,7 +588,7 @@ def lookup_job(job_name, top_n=3):
 # RESUME PARSING HELPERS
 # ─────────────────────────────────────────────────────────────
 def extract_text_from_resume(uploaded_file):
-    """PDF or DOCX file theke raw text ber kore."""
+    """Extract raw text from an uploaded PDF or DOCX file."""
     try:
         if uploaded_file.name.lower().endswith('.pdf'):
             text = ""
@@ -557,14 +601,15 @@ def extract_text_from_resume(uploaded_file):
             return "\n".join(p.text for p in doc.paragraphs)
         else:
             return ""
-    except Exception as e:
-        st.error(f"Resume porate somosya hoyeche: {e}")
+    except Exception:
+        logger.error("Failed to extract text from uploaded resume: %s", getattr(uploaded_file, "name", "?"), exc_info=True)
+        st.error("There was a problem reading that resume file. Please try a different PDF or DOCX file.")
         return ""
 
 
 @st.cache_data(show_spinner=False)
 def build_skill_vocabulary(_jobs):
-    """Dataset-er required_skills column theke ekta master skill vocabulary banay."""
+    """Builds a master skill vocabulary from the dataset's required_skills column."""
     skill_set = set()
     if 'required_skills' in _jobs.columns:
         for cell in _jobs['required_skills'].dropna():
@@ -576,7 +621,7 @@ def build_skill_vocabulary(_jobs):
 
 
 def extract_hard_skills(resume_text, skill_vocab):
-    """Resume text-er moddhe vocabulary-r kon kon skill ache seta khuje ber kore."""
+    """Finds which vocabulary skills appear in the resume text."""
     text_lower = resume_text.lower()
     found = []
     for skill in skill_vocab:
@@ -600,17 +645,28 @@ def extract_qualifications(resume_text):
 # ═════════════════════════════════════════════════════════════
 # PRESENTATIONAL HELPERS
 # ═════════════════════════════════════════════════════════════
+def esc(value) -> str:
+    """HTML-escape any value that gets interpolated into an unsafe_allow_html block.
+    Everything rendered here can originate from the jobs CSV or a user upload, so
+    nothing is trusted by default."""
+    if value is None:
+        return ""
+    return html.escape(str(value), quote=True)
+
+
 def tags_html(items):
-    if not items or items == "Not specified":
+    if items is None or items == "Not specified" or (isinstance(items, float) and pd.isna(items)):
         return "<span class='tag-empty'>Not specified</span>"
     if isinstance(items, str):
         items = [i.strip() for i in items.split(",") if i.strip()]
-    return " ".join(f'<span class="tag">{i}</span>' for i in items[:8])
+    if not items:
+        return "<span class='tag-empty'>Not specified</span>"
+    return " ".join(f'<span class="tag">{esc(i)}</span>' for i in items[:8])
 
 
 def initials(name: str):
     name = (name or "?").strip()
-    return name[0].upper() if name else "?"
+    return esc(name[0].upper()) if name else "?"
 
 
 def render_navbar():
@@ -628,8 +684,8 @@ def render_navbar():
     st.markdown(f"""
     <div class="navbar">
       <div class="brand">
-        <span class="logo-mark" onclick="if(window.showSplash){{window.showSplash();}}" style="cursor:pointer;" title="Back to home">{logo_svg}</span>
-        <span class="brand-name" onclick="if(window.showSplash){{window.showSplash();}}" style="cursor:pointer;">RoleSense</span>
+        <a class="logo-mark" href="." style="cursor:pointer; text-decoration:none;" title="Back to home">{logo_svg}</a>
+        <a class="brand-name" href="." style="cursor:pointer; text-decoration:none;">RoleSense</a>
       </div>
       <div class="links">
         <a href="#resume-section">Resume AI</a>
@@ -667,8 +723,8 @@ def render_stats(stats: dict):
         else:
             display = f"{value/1_000_000:.1f}M" if value >= 1_000_000 else f"{value:,}"
         cards.append(
-            '<div class="stat-card"><div class="stat-num">' + display +
-            '</div><div class="stat-label">' + label + '</div></div>'
+            '<div class="stat-card"><div class="stat-num">' + esc(display) +
+            '</div><div class="stat-label">' + esc(label) + '</div></div>'
         )
     grid_html = '<div class="stats-grid">' + "".join(cards) + '</div>'
     st.markdown(grid_html, unsafe_allow_html=True)
@@ -677,18 +733,32 @@ def render_stats(stats: dict):
 def render_section_header(eyebrow, title, sub):
     st.markdown(f"""
     <div class="sec-header">
-      <div class="sec-eyebrow">{eyebrow}</div>
-      <div class="sec-title">{title}</div>
-      <div class="sec-sub">{sub}</div>
+      <div class="sec-eyebrow">{esc(eyebrow)}</div>
+      <div class="sec-title">{esc(title)}</div>
+      <div class="sec-sub">{esc(sub)}</div>
     </div>
     """, unsafe_allow_html=True)
 
 
 def render_empty_state(message):
-    st.markdown(f"""<div class="empty-state">{message}</div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="empty-state">{esc(message)}</div>""", unsafe_allow_html=True)
 
 
-def render_job_card(row, idx):
+def stable_job_key(row) -> str:
+    """Prefer a real dataset identifier so bookmarks don't collide when two
+    different postings share the same title + company (very common for
+    large employers). Falls back to a hash of more fields if no id column
+    exists, and finally to the row's own dataframe index."""
+    for id_col in ("job_id", "id", "job_posting_id"):
+        if id_col in row and pd.notna(row.get(id_col)):
+            return str(row.get(id_col))
+    fingerprint = "|".join(str(row.get(c, "")) for c in (
+        "title", "company_name", "description", "min_salary_yr", "max_salary_yr"
+    ))
+    return hashlib.md5(fingerprint.encode()).hexdigest()[:12]
+
+
+def render_job_card(row, idx, section="job"):
     score = row.get('match_score', 0)
     title = row.get('title', 'N/A')
     company = row.get('company_name', 'Unknown')
@@ -710,20 +780,20 @@ def render_job_card(row, idx):
             <div class="job-card-left">
               <div class="job-logo">{initials(company)}</div>
               <div>
-                <div class="job-title">{title}</div>
-                <div class="job-meta">{company} · {wtype}</div>
+                <div class="job-title">{esc(title)}</div>
+                <div class="job-meta">{esc(company)} · {esc(wtype)}</div>
               </div>
             </div>
             <div class="job-card-right">
-              <div class="match-score-num">{score}%</div>
-              <div class="match-score-label">{match_tier(score)}</div>
+              <div class="match-score-num">{esc(score)}%</div>
+              <div class="match-score-label">{esc(match_tier(score))}</div>
             </div>
           </div>
           <div class="kv-row">
-            <span class="kv-item"><span class="kv-label">Salary</span>{salary_str}</span>
-            <span class="kv-item"><span class="kv-label">Experience</span>{exp}</span>
-            <span class="kv-item"><span class="kv-label">Location</span>{remote_text}</span>
-            <span class="kv-item"><span class="kv-label">Industry</span>{industry}</span>
+            <span class="kv-item"><span class="kv-label">Salary</span>{esc(salary_str)}</span>
+            <span class="kv-item"><span class="kv-label">Experience</span>{esc(exp)}</span>
+            <span class="kv-item"><span class="kv-label">Location</span>{esc(remote_text)}</span>
+            <span class="kv-item"><span class="kv-label">Industry</span>{esc(industry)}</span>
           </div>
           <span class="tag-block-label">Skills</span>
           <div style="margin-bottom:10px">{tags_html(skills)}</div>
@@ -738,7 +808,12 @@ def render_job_card(row, idx):
                 desc_text = str(row.get('description', 'Not available'))
                 st.write(desc_text[:1500] + ("..." if len(desc_text) > 1500 else ""))
         with bcol2:
-            bookmark_key = f"bookmark_{idx}_{hashlib.md5((str(title)+str(company)).encode()).hexdigest()[:8]}"
+            # Include the section name so the same job appearing in multiple
+            # result lists (resume matches vs. manual search, etc.) never
+            # collides on a duplicate widget id, and use a stable per-job
+            # identifier so two different postings with the same title +
+            # company don't share bookmark state.
+            bookmark_key = f"bookmark_{section}_{idx}_{stable_job_key(row)}"
             saved = st.session_state.get(bookmark_key, False)
             label = "Saved" if saved else "Save role"
             if st.button(label, key=bookmark_key + "_btn", use_container_width=True):
@@ -763,8 +838,8 @@ def render_lookup_card(row):
 
     st.markdown(f"""
     <div class="lookup-hero">
-      <div class="lh-title">{title}</div>
-      <div class="lh-score">{score}% reference match</div>
+      <div class="lh-title">{esc(title)}</div>
+      <div class="lh-score">{esc(score)}% reference match</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -772,7 +847,7 @@ def render_lookup_card(row):
         st.markdown(f"""
         <div class="salary-strip">
           <span class="ss-label">Typical salary</span>
-          <span class="ss-value">{salary_str}</span>
+          <span class="ss-value">{esc(salary_str)}</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -784,11 +859,11 @@ def render_lookup_card(row):
                 st.markdown(f"""
                 <div class="info-card">
                   <div class="ic-label">Role overview</div>
-                  <div class="info-row"><span class="info-key">Example employer</span><span class="info-val">{company}</span></div>
-                  <div class="info-row"><span class="info-key">Work type</span><span class="info-val">{wtype}</span></div>
-                  <div class="info-row"><span class="info-key">Experience</span><span class="info-val">{exp}</span></div>
-                  <div class="info-row"><span class="info-key">Often remote</span><span class="info-val">{remote}</span></div>
-                  <div class="info-row"><span class="info-key">Industry</span><span class="info-val">{industry}</span></div>
+                  <div class="info-row"><span class="info-key">Example employer</span><span class="info-val">{esc(company)}</span></div>
+                  <div class="info-row"><span class="info-key">Work type</span><span class="info-val">{esc(wtype)}</span></div>
+                  <div class="info-row"><span class="info-key">Experience</span><span class="info-val">{esc(exp)}</span></div>
+                  <div class="info-row"><span class="info-key">Often remote</span><span class="info-val">{esc(remote)}</span></div>
+                  <div class="info-row"><span class="info-key">Industry</span><span class="info-val">{esc(industry)}</span></div>
                 </div>
                 """, unsafe_allow_html=True)
             with c2:
@@ -825,7 +900,7 @@ def render_footer():
     <div class="app-footer">
       <div class="footer-row">
         <span class="footer-brand">RoleSense</span>
-        <span class="footer-meta">v{APP_VERSION} · Built with Streamlit + scikit-learn · Estimates are informational, not guarantees</span>
+        <span class="footer-meta">v{esc(APP_VERSION)} · Built with Streamlit + scikit-learn · Estimates are informational, not guarantees</span>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -909,7 +984,7 @@ def render_splash_injector():
                 '  bottom:-140px;right:-100px;pointer-events:none;z-index:1;',
                 '}}',
 
-                /* full-bleed image layer — fills the ENTIRE viewport, no letterboxing */
+                /* full-bleed image layer — the image IS the full-screen background */
                 '.rs-image-layer{{',
                 '  position:absolute;top:0;left:0;right:0;bottom:0;',
                 '  z-index:2;',
@@ -921,10 +996,10 @@ def render_splash_injector():
                 '}}',
                 '.rs-image-layer.rs-visible{{opacity:1;transform:scale(1);}}',
 
-                /* the brand image itself, cropped to cover the whole viewport */
+                /* the brand image is a full-bleed 1536x1024 splash graphic (already contains
+                   its own dark background, arcs, and dot-grid) — cover the ENTIRE viewport */
                 '#rs-img{{',
                 '  width:100%;height:100%;',
-                '  min-width:100%;min-height:100%;',
                 '  object-fit:cover;object-position:center;',
                 '  display:block;',
                 '  user-select:none;-webkit-user-drag:none;',
@@ -1005,9 +1080,6 @@ def render_splash_injector():
                     : '<div class="rs-fallback">RoleSense</div>'
                   ) +
                 '</div>' +
-                '<div class="rs-dots"></div>' +
-                '<div class="rs-arc-tl"></div>' +
-                '<div class="rs-arc-br"></div>' +
                 '<div class="rs-scrim"></div>' +
                 '<div class="rs-bar-section" id="rs-inner">' +
                   '<div class="rs-bar-label" id="rs-label">Initializing</div>' +
@@ -1096,7 +1168,13 @@ def render_splash_injector():
 # ═════════════════════════════════════════════════════════════
 # PAGE ASSEMBLY
 # ═════════════════════════════════════════════════════════════
-render_splash_injector()
+try:
+    render_splash_injector()
+except Exception:
+    # This splash reaches into the parent document's DOM, which isn't a
+    # supported Streamlit API — if a future Streamlit version changes that
+    # structure, fail quietly instead of taking the whole page down with it.
+    logger.warning("Splash injector failed to render; continuing without it", exc_info=True)
 render_navbar()
 render_hero()
 render_stats(compute_dataset_stats(jobs))
@@ -1114,16 +1192,22 @@ skill_vocab = build_skill_vocabulary(jobs)
 
 with st.container(border=True):
     uploaded_resume = st.file_uploader(
-        "Upload your resume (PDF or DOCX, max 5MB)",
+        f"Upload your resume (PDF or DOCX, max {MAX_RESUME_MB}MB)",
         type=["pdf", "docx"],
         label_visibility="collapsed"
     )
+    st.caption("Your resume is processed in memory for this session only and is not stored.")
 
     analyze_clicked = st.button("Analyze resume", key="resume_btn", use_container_width=True)
 
     if analyze_clicked:
         if not uploaded_resume:
             st.warning("Please upload a resume file first.")
+        elif uploaded_resume.size > MAX_RESUME_BYTES:
+            st.warning(
+                f"That file is {uploaded_resume.size / (1024*1024):.1f}MB — "
+                f"please upload a resume under {MAX_RESUME_MB}MB."
+            )
         else:
             with st.status("Analyzing your resume...", expanded=False) as status:
                 st.write("Extracting text from file...")
@@ -1181,7 +1265,7 @@ with st.container(border=True):
                 st.markdown(f"**Top {len(results)} matching roles based on your resume**")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 for i, (_, row) in enumerate(results.iterrows()):
-                    render_job_card(row, i)
+                    render_job_card(row, i, section="resume")
 
 # ─────────────────────────────────────────────────────────────
 # MODULE 01 — Find matching jobs
@@ -1208,7 +1292,8 @@ with st.container(border=True):
             "Your skills (comma separated)",
             key="user_skills_key",
             placeholder="e.g. Python, Machine Learning, SQL, TensorFlow",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            max_chars=MAX_SKILLS_CHARS
         )
         st.caption("Comma-separated. The more specific, the better the match.")
     with col_b:
@@ -1216,7 +1301,8 @@ with st.container(border=True):
         desired_title = st.text_input(
             "Desired job title (optional)",
             placeholder="e.g. Data Scientist",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            max_chars=MAX_TITLE_CHARS
         )
         st.caption("Optional — sharpens title relevance.")
 
@@ -1256,7 +1342,7 @@ with st.container(border=True):
                 st.markdown(f"**{len(results)} suggested matches**")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 for i, (_, row) in enumerate(results.iterrows()):
-                    render_job_card(row, i)
+                    render_job_card(row, i, section="find")
 
 # ─────────────────────────────────────────────────────────────
 # MODULE 02 — Predict salary & industry
@@ -1273,9 +1359,13 @@ with st.container(border=True):
         "Job description",
         height=150,
         placeholder="Paste the full job description here...",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        max_chars=MAX_DESCRIPTION_CHARS
     )
-    st.caption("More detail (responsibilities, requirements, seniority cues) improves accuracy.")
+    st.caption(
+        f"More detail (responsibilities, requirements, seniority cues) improves accuracy. "
+        f"Max {MAX_DESCRIPTION_CHARS:,} characters."
+    )
 
     col_p1, col_p2 = st.columns(2)
     with col_p1:
@@ -1298,12 +1388,17 @@ with st.container(border=True):
         elif len(description.strip()) < 30:
             st.warning("That description looks a bit short — paste more detail for a reliable estimate.")
         else:
-            with st.status("Running AI analysis...", expanded=False) as status:
-                st.write("Reading the description...")
-                status.update(label="Estimating salary range...")
-                med, low, high, industries = predict(description, exp_level, wt_sel)
-                status.update(label="Classifying industry...")
-                status.update(label="Analysis complete.", state="complete")
+            try:
+                with st.status("Running AI analysis...", expanded=False) as status:
+                    st.write("Reading the description...")
+                    status.update(label="Estimating salary range...")
+                    med, low, high, industries = predict(description, exp_level, wt_sel)
+                    status.update(label="Classifying industry...")
+                    status.update(label="Analysis complete.", state="complete")
+            except Exception:
+                logger.error("Salary/industry prediction failed", exc_info=True)
+                st.error("Something went wrong while analyzing that description. Please try again.")
+                st.stop()
 
             top_industry_name, top_industry_pct = industries[0]
 
@@ -1313,9 +1408,9 @@ with st.container(border=True):
             m3.metric("Top industry confidence", f"{top_industry_pct}%", help=f"Model confidence that this role belongs to {top_industry_name}")
 
             ind_bars = "".join(
-                '<div class="ai-industry-row"><span class="ai-industry-name">' + name +
+                '<div class="ai-industry-row"><span class="ai-industry-name">' + esc(name) +
                 '</span><div class="ai-industry-track"><div class="ai-industry-fill" style="width:' +
-                str(int(prob)) + '%"></div></div><span class="ai-industry-pct">' + str(prob) +
+                str(int(prob)) + '%"></div></div><span class="ai-industry-pct">' + esc(prob) +
                 '%</span></div>'
                 for name, prob in industries
             )
@@ -1348,7 +1443,8 @@ with st.container(border=True):
         st.markdown("<div class='field-label'>Job title</div>", unsafe_allow_html=True)
         job_name = st.text_input(
             "Job title", placeholder="e.g. Data Scientist, Product Manager, DevOps Engineer",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            max_chars=MAX_JOB_NAME_CHARS
         )
     with col_l2:
         top_n_lookup = st.selectbox("Results", [1, 2, 3, 5], index=1)
