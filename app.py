@@ -95,30 +95,35 @@ def inject_css() -> None:
         .navbar {
             position: sticky; top: 0; z-index: 999;
             display: flex; align-items: center; justify-content: space-between;
-            padding: 18px 0;
+            padding: 16px 0;
             margin: 0 0 56px;
             background: rgba(11,18,32,0.85);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border-bottom: 1px solid var(--border);
         }
-        .navbar .brand { display: flex; align-items: center; gap: 10px; }
+        .navbar .brand { display: flex; align-items: center; gap: 12px; }
         .navbar .brand .logo-mark {
             display: inline-flex; align-items: center; justify-content: center;
-            width: 30px; height: 30px; border-radius: 8px;
-            background: var(--accent);
-            color: #fff; font-weight: 800; font-size: 0.85rem;
+            width: 38px; height: 38px; border-radius: 11px;
+            background: linear-gradient(135deg, #60A5FA 0%, #3B82F6 55%, #2563EB 100%);
+            color: #fff; font-weight: 800; font-size: 1rem;
+            box-shadow: 0 4px 14px rgba(59,130,246,0.35);
         }
-        .navbar .brand .brand-name { font-weight: 800; font-size: 1.02rem; color: var(--ink); letter-spacing: -0.01em; }
+        .navbar .brand .brand-name { font-weight: 800; font-size: 1.28rem; color: var(--ink); letter-spacing: -0.02em; }
         .navbar .links { display: flex; align-items: center; gap: 30px; }
         .navbar .links a {
-            text-decoration: none; font-size: 0.88rem; font-weight: 500;
+            display: inline-flex; align-items: center; gap: 7px;
+            text-decoration: none; font-size: 0.9rem; font-weight: 500;
             color: var(--ink-soft); transition: color 0.15s ease;
         }
-        .navbar .links a:hover { color: var(--accent); }
+        .navbar .links a i { font-size: 0.95rem; color: var(--muted); transition: color 0.15s ease; }
+        .navbar .links a:hover { color: var(--ink); }
+        .navbar .links a:hover i { color: var(--accent); }
         .navbar .nav-cta {
-            background: var(--accent); color: #fff !important; font-size: 0.85rem; font-weight: 700;
-            padding: 10px 20px; border-radius: 999px; text-decoration: none;
+            background: var(--accent); color: #fff !important; font-size: 0.88rem; font-weight: 700;
+            padding: 11px 24px; border-radius: 999px; text-decoration: none;
+            box-shadow: 0 4px 14px rgba(59,130,246,0.3);
             transition: background 0.15s ease;
         }
         .navbar .nav-cta:hover { background: var(--accent-hover); }
@@ -500,13 +505,13 @@ def render_navbar():
     st.markdown("""
     <div class="navbar">
       <div class="brand">
-        <span class="logo-mark">R</span>
+        <span class="logo-mark"><i class="bi bi-briefcase-fill"></i></span>
         <span class="brand-name">RoleSense</span>
       </div>
       <div class="links">
-        <a href="#find-section">Find matches</a>
-        <a href="#predict-section">Salary AI</a>
-        <a href="#lookup-section">Role lookup</a>
+        <a href="#find-section"><i class="bi bi-search"></i>Find matches</a>
+        <a href="#predict-section"><i class="bi bi-graph-up-arrow"></i>Salary AI</a>
+        <a href="#lookup-section"><i class="bi bi-compass"></i>Role lookup</a>
       </div>
       <a class="nav-cta" href="#find-section">Get started</a>
     </div>
@@ -838,26 +843,26 @@ with st.container(border=True):
             m2.metric("Estimated range", f"${low:,.0f} – ${high:,.0f}")
             m3.metric("Top industry confidence", f"{top_industry_pct}%", help=f"Model confidence that this role belongs to {top_industry_name}")
 
-            ind_bars = ""
-            for name, prob in industries:
-                bar_w = int(prob)
-                ind_bars += f"""
-                <div class="ai-industry-row">
-                  <span class="ai-industry-name">{name}</span>
-                  <div class="ai-industry-track"><div class="ai-industry-fill" style="width:{bar_w}%"></div></div>
-                  <span class="ai-industry-pct">{prob}%</span>
-                </div>"""
+            ind_bars = "".join(
+                '<div class="ai-industry-row"><span class="ai-industry-name">' + name +
+                '</span><div class="ai-industry-track"><div class="ai-industry-fill" style="width:' +
+                str(int(prob)) + '%"></div></div><span class="ai-industry-pct">' + str(prob) +
+                '%</span></div>'
+                for name, prob in industries
+            )
 
-            st.markdown(f"""
-            <div class="ai-panel">
-              <div class="ai-panel-label">AI salary estimate</div>
-              <div class="ai-salary">${low:,.0f} – ${high:,.0f} / year</div>
-              <div class="ai-salary-sub">Estimated median: ${med:,.0f} / year</div>
-              <div class="ai-panel-label">Top predicted industries</div>
-              {ind_bars}
-              <div class="ai-caption">Estimate based on patterns in the training dataset — treat it as a directional starting point, not an offer or guarantee.</div>
-            </div>
-            """, unsafe_allow_html=True)
+            panel_html = (
+                '<div class="ai-panel">'
+                '<div class="ai-panel-label">AI salary estimate</div>'
+                '<div class="ai-salary">$' + f"{low:,.0f}" + ' – $' + f"{high:,.0f}" + ' / year</div>'
+                '<div class="ai-salary-sub">Estimated median: $' + f"{med:,.0f}" + ' / year</div>'
+                '<div class="ai-panel-label">Top predicted industries</div>'
+                + ind_bars +
+                '<div class="ai-caption">Estimate based on patterns in the training dataset — '
+                'treat it as a directional starting point, not an offer or guarantee.</div>'
+                '</div>'
+            )
+            st.markdown(panel_html, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
 # MODULE 03 — Job lookup
