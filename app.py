@@ -117,18 +117,24 @@ def inject_css() -> None:
         .navbar .links a {
             display: inline-flex; align-items: center; gap: 7px;
             text-decoration: none; font-size: 0.9rem; font-weight: 500;
-            color: var(--ink-soft); transition: color 0.15s ease;
+            color: var(--ink-soft); transition: color 0.15s ease, filter 0.15s ease, transform 0.15s ease;
         }
         .navbar .links a i { font-size: 0.95rem; color: var(--muted); transition: color 0.15s ease; }
-        .navbar .links a:hover { color: var(--ink); }
+        .navbar .links a:hover { color: var(--ink); filter: brightness(1.3); transform: translateY(-1px); }
         .navbar .links a:hover i { color: var(--accent); }
         .navbar .nav-cta {
             background: var(--accent); color: #fff !important; font-size: 0.88rem; font-weight: 700;
             padding: 11px 24px; border-radius: 999px; text-decoration: none;
             box-shadow: 0 4px 14px rgba(59,130,246,0.3);
-            transition: background 0.15s ease;
+            transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
         }
-        .navbar .nav-cta:hover { background: var(--accent-hover); }
+        .navbar .nav-cta:hover {
+            filter: brightness(1.18);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(59,130,246,0.45);
+        }
+        .navbar .brand .logo-mark { transition: filter 0.15s ease, transform 0.15s ease; }
+        .navbar .brand .logo-mark:hover { filter: brightness(1.25); transform: scale(1.05); }
 
         @media (max-width: 768px) { .navbar .links { display: none; } }
 
@@ -147,7 +153,16 @@ def inject_css() -> None:
 
         /* ── Stats grid ────────────────────────────────────── */
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 32px 0 48px; }
-        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px; }
+        .stat-card {
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 18px 20px;
+            transition: filter 0.18s ease, transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+        .stat-card:hover {
+            filter: brightness(1.15);
+            transform: translateY(-2px);
+            border-color: var(--accent);
+            box-shadow: 0 8px 20px rgba(59,130,246,0.18);
+        }
         .stat-num { font-weight: 800; font-size: 1.4rem; color: #F1F5F9; letter-spacing: -0.01em; }
         .stat-label { font-size: 0.78rem; color: #8B96AF; font-weight: 500; margin-top: 3px; }
         @media (max-width: 700px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -169,6 +184,13 @@ def inject_css() -> None:
             border-radius: var(--radius-md);
             padding: 22px 24px;
             margin-bottom: 14px;
+            transition: filter 0.18s ease, transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+        .job-card:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+            border-color: var(--border-strong);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.35);
         }
         .job-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 14px; }
         .job-card-left { display: flex; gap: 14px; align-items: flex-start; }
@@ -193,7 +215,9 @@ def inject_css() -> None:
             display: inline-block; padding: 5px 11px; border-radius: 999px;
             font-size: 0.76rem; margin: 2px 6px 2px 0; font-weight: 600;
             background: var(--surface-alt); color: var(--ink-soft); border: 1px solid var(--border);
+            transition: filter 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
         }
+        .tag:hover { filter: brightness(1.3); border-color: var(--accent); transform: translateY(-1px); }
         .tag-empty { color: var(--muted); font-size: 0.8rem; }
 
         /* ── AI analytics panel ──────────────────────────── */
@@ -225,7 +249,9 @@ def inject_css() -> None:
         .info-card {
             background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-md);
             padding: 16px 18px; height: 100%;
+            transition: filter 0.18s ease, border-color 0.18s ease;
         }
+        .info-card:hover { filter: brightness(1.12); border-color: var(--accent); }
         .info-card .ic-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
         .info-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.85rem; border-bottom: 1px solid var(--border); }
         .info-row:last-child { border-bottom: none; }
@@ -271,12 +297,18 @@ def inject_css() -> None:
             font-weight: 700 !important;
             font-size: 0.86rem !important;
             box-shadow: none !important;
-            transition: background 0.15s ease !important;
+            transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease !important;
         }
         .stButton > button:hover,
         button[data-testid="baseButton-primary"]:hover {
-            background: var(--accent-hover) !important;
-            transform: none;
+            filter: brightness(1.2) !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 0 6px 16px rgba(59,130,246,0.4) !important;
+        }
+        .stButton > button:active,
+        button[data-testid="baseButton-primary"]:active {
+            filter: brightness(0.95) !important;
+            transform: translateY(0) !important;
         }
         .stButton > button[kind="secondary"] {
             background: var(--surface-alt) !important;
@@ -284,9 +316,30 @@ def inject_css() -> None:
             border: 1px solid var(--border) !important;
             box-shadow: none !important;
         }
+        .stButton > button[kind="secondary"]:hover {
+            filter: brightness(1.25) !important;
+            border-color: var(--accent) !important;
+        }
 
-        div[data-testid="stExpander"] { border-radius: var(--radius-sm) !important; border: 1px solid var(--border) !important; background: var(--surface) !important; box-shadow: none !important; }
-        div[data-testid="stVerticalBlockBorderWrapper"] { border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important; background: var(--surface) !important; box-shadow: none !important; }
+        div[data-testid="stExpander"] {
+            border-radius: var(--radius-sm) !important; border: 1px solid var(--border) !important;
+            background: var(--surface) !important; box-shadow: none !important;
+            transition: filter 0.15s ease, border-color 0.15s ease;
+        }
+        div[data-testid="stExpander"]:hover { filter: brightness(1.08); border-color: var(--border-strong) !important; }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: var(--radius-md) !important; border: 1px solid var(--border) !important;
+            background: var(--surface) !important; box-shadow: none !important;
+            transition: border-color 0.2s ease;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:hover { border-color: var(--border-strong) !important; }
+        div[data-testid="stFileUploader"] section {
+            transition: filter 0.15s ease, border-color 0.15s ease !important;
+        }
+        div[data-testid="stFileUploader"] section:hover {
+            filter: brightness(1.12) !important;
+            border-color: var(--accent) !important;
+        }
         hr { border: none !important; border-top: 1px solid var(--border) !important; margin: 36px 0 !important; }
 
         [data-testid="stMetricValue"] { color: var(--ink); font-weight: 800; }
@@ -561,17 +614,28 @@ def initials(name: str):
 
 
 def render_navbar():
-    st.markdown("""
+    logo_svg = """
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 8.5C4 7.67157 4.67157 7 5.5 7H18.5C19.3284 7 20 7.67157 20 8.5V17.5C20 18.3284 19.3284 19 18.5 19H5.5C4.67157 19 4 18.3284 4 17.5V8.5Z"
+            stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M9 7V6C9 5.44772 9.44772 5 10 5H14C14.5523 5 15 5.44772 15 6V7"
+            stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M4 12.5C6.2 13.8 9 14.5 12 14.5C15 14.5 17.8 13.8 20 12.5"
+            stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12" cy="12.5" r="0.9" fill="white"/>
+    </svg>
+    """
+    st.markdown(f"""
     <div class="navbar">
       <div class="brand">
-        <span class="logo-mark"><i class="bi bi-briefcase-fill"></i></span>
+        <span class="logo-mark">{logo_svg}</span>
         <span class="brand-name">RoleSense</span>
       </div>
       <div class="links">
-        <a href="#resume-section"><i class="bi bi-file-earmark-arrow-up"></i>Resume AI</a>
-        <a href="#find-section"><i class="bi bi-search"></i>Find matches</a>
-        <a href="#predict-section"><i class="bi bi-graph-up-arrow"></i>Salary AI</a>
-        <a href="#lookup-section"><i class="bi bi-compass"></i>Role lookup</a>
+        <a href="#resume-section">📄 Resume AI</a>
+        <a href="#find-section">🔍 Find matches</a>
+        <a href="#predict-section">📈 Salary AI</a>
+        <a href="#lookup-section">🧭 Role lookup</a>
       </div>
       <a class="nav-cta" href="#resume-section">Get started</a>
     </div>
@@ -1043,4 +1107,4 @@ with st.container(border=True):
                 for _, row in results.iterrows():
                     render_lookup_card(row)
 
-render_footer()      
+render_footer()
