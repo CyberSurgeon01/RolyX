@@ -1184,7 +1184,7 @@ render_stats(compute_dataset_stats(jobs))
 # ─────────────────────────────────────────────────────────────
 st.markdown('<div id="resume-section"></div>', unsafe_allow_html=True)
 render_section_header(
-    "MODULE 00", "Upload your resume",
+    "GET STARTED", "Upload your resume",
     "Upload a PDF or DOCX resume — RoleSense extracts your skills and instantly matches you against real roles."
 )
 
@@ -1272,7 +1272,7 @@ with st.container(border=True):
 # ─────────────────────────────────────────────────────────────
 st.markdown('<div id="find-section"></div>', unsafe_allow_html=True)
 render_section_header(
-    "MODULE 01", "Find your best-fit roles",
+    "SKILLS MATCH", "Find your best-fit roles",
     "Enter your skills and RoleSense surfaces roles from the dataset you're likely to match well with."
 )
 
@@ -1349,7 +1349,7 @@ with st.container(border=True):
 # ─────────────────────────────────────────────────────────────
 st.markdown('<div id="predict-section"></div>', unsafe_allow_html=True)
 render_section_header(
-    "MODULE 02", "Predict salary & industry",
+    "SALARY INSIGHTS", "Predict salary & industry",
     "Paste any job description and RoleSense estimates its pay range and the most likely industries."
 )
 
@@ -1433,7 +1433,7 @@ with st.container(border=True):
 # ─────────────────────────────────────────────────────────────
 st.markdown('<div id="lookup-section"></div>', unsafe_allow_html=True)
 render_section_header(
-    "MODULE 03", "Look up a role",
+    "ROLE DATA", "Look up a role",
     "Search any job title to see typical skills, pay, and benefits for that role in the dataset."
 )
 
