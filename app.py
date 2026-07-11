@@ -1,3 +1,5 @@
+import pdfplumber
+import docx
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -20,7 +22,7 @@ st.set_page_config(
 )
 
 MODELS_DIR = "models/"
-APP_VERSION = "2.0"
+APP_VERSION = "2.1"
 
 
 # ═════════════════════════════════════════════════════════════
@@ -485,6 +487,63 @@ def lookup_job(job_name, top_n=3):
     return result
 
 
+# ─────────────────────────────────────────────────────────────
+# RESUME PARSING HELPERS
+# ─────────────────────────────────────────────────────────────
+def extract_text_from_resume(uploaded_file):
+    """PDF অথবা DOCX ফাইল থেকে raw text বের করে।"""
+    try:
+        if uploaded_file.name.lower().endswith('.pdf'):
+            text = ""
+            with pdfplumber.open(uploaded_file) as pdf:
+                for page in pdf.pages:
+                    text += (page.extract_text() or "") + "\n"
+            return text
+        elif uploaded_file.name.lower().endswith('.docx'):
+            doc = docx.Document(uploaded_file)
+            return "\n".join(p.text for p in doc.paragraphs)
+        else:
+            return ""
+    except Exception as e:
+        st.error(f"Resume পড়তে সমস্যা হয়েছে: {e}")
+        return ""
+
+
+@st.cache_data(show_spinner=False)
+def build_skill_vocabulary(_jobs):
+    """Dataset-এর required_skills কলাম থেকে একটা master skill vocabulary বানায়।"""
+    skill_set = set()
+    if 'required_skills' in _jobs.columns:
+        for cell in _jobs['required_skills'].dropna():
+            for piece in str(cell).split(','):
+                piece = piece.strip().lower()
+                if piece and piece != 'not specified' and len(piece) > 1:
+                    skill_set.add(piece)
+    return skill_set
+
+
+def extract_hard_skills(resume_text, skill_vocab):
+    """Resume text-এর মধ্যে vocabulary-র কোন কোন skill আছে সেটা খুঁজে বের করে।"""
+    text_lower = resume_text.lower()
+    found = []
+    for skill in skill_vocab:
+        pattern = r'(?<![a-zA-Z0-9])' + re.escape(skill) + r'(?![a-zA-Z0-9])'
+        if re.search(pattern, text_lower):
+            found.append(skill.title())
+    return sorted(set(found))
+
+
+def extract_qualifications(resume_text):
+    """সহজ keyword-based degree/certification detection।"""
+    quals = [
+        "Bachelor", "Master", "PhD", "MBA", "B.Sc", "M.Sc", "B.Tech", "M.Tech",
+        "Diploma", "Certified", "Certification", "Associate Degree"
+    ]
+    text_lower = resume_text.lower()
+    found = [q for q in quals if q.lower() in text_lower]
+    return found
+
+
 # ═════════════════════════════════════════════════════════════
 # PRESENTATIONAL HELPERS
 # ═════════════════════════════════════════════════════════════
@@ -509,11 +568,12 @@ def render_navbar():
         <span class="brand-name">RoleSense</span>
       </div>
       <div class="links">
+        <a href="#resume-section"><i class="bi bi-file-earmark-arrow-up"></i>Resume AI</a>
         <a href="#find-section"><i class="bi bi-search"></i>Find matches</a>
         <a href="#predict-section"><i class="bi bi-graph-up-arrow"></i>Salary AI</a>
         <a href="#lookup-section"><i class="bi bi-compass"></i>Role lookup</a>
       </div>
-      <a class="nav-cta" href="#find-section">Get started</a>
+      <a class="nav-cta" href="#resume-section">Get started</a>
     </div>
     """, unsafe_allow_html=True)
 
@@ -715,6 +775,90 @@ render_hero()
 render_stats(compute_dataset_stats(jobs))
 
 # ─────────────────────────────────────────────────────────────
+# MODULE 00 — Resume upload & auto-match
+# ─────────────────────────────────────────────────────────────
+st.markdown('<div id="resume-section"></div>', unsafe_allow_html=True)
+render_section_header(
+    "MODULE 00", "Upload your resume",
+    "Upload a PDF or DOCX resume — RoleSense extracts your skills and instantly matches you against real roles."
+)
+
+skill_vocab = build_skill_vocabulary(jobs)
+
+with st.container(border=True):
+    uploaded_resume = st.file_uploader(
+        "Upload your resume (PDF or DOCX, max 5MB)",
+        type=["pdf", "docx"],
+        label_visibility="collapsed"
+    )
+
+    analyze_clicked = st.button("Analyze resume", key="resume_btn", use_container_width=True)
+
+    if analyze_clicked:
+        if not uploaded_resume:
+            st.warning("দয়া করে একটা resume আপলোড করুন।")
+        else:
+            with st.status("Analyzing your resume...", expanded=False) as status:
+                st.write("Extracting text from file...")
+                resume_text = extract_text_from_resume(uploaded_resume)
+
+                if not resume_text.strip():
+                    status.update(label="Couldn't extract text.", state="error")
+                    st.error("এই ফাইল থেকে টেক্সট বের করা যায়নি। অন্য ফাইল ট্রাই করুন।")
+                    st.stop()
+
+                status.update(label="Extracting hard skills...")
+                hard_skills = extract_hard_skills(resume_text, skill_vocab)
+
+                status.update(label="Extracting soft skills...")
+                soft_skills = extract_soft_skills(resume_text)
+
+                status.update(label="Detecting qualifications...")
+                qualifications = extract_qualifications(resume_text)
+
+                status.update(label="Matching against job roles...")
+                cleaned = clean_text(resume_text)
+                results, _ = recommend_jobs(user_skills=cleaned, top_n=10)
+
+                status.update(label="Analysis complete.", state="complete")
+
+            # ── এক্সট্র্যাক্টেড ডেটা দেখানো ──
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown(f"""
+                <div class="info-card">
+                  <div class="ic-label">Hard skills found ({len(hard_skills)})</div>
+                  <div>{tags_html(hard_skills)}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""
+                <div class="info-card">
+                  <div class="ic-label">Soft skills found ({len(soft_skills)})</div>
+                  <div>{tags_html(soft_skills)}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c3:
+                st.markdown(f"""
+                <div class="info-card">
+                  <div class="ic-label">Qualifications found ({len(qualifications)})</div>
+                  <div>{tags_html(qualifications)}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+
+            # ── Top role matches ──
+            if results.empty:
+                render_empty_state("Resume থেকে কোনো matching role পাওয়া যায়নি।")
+            else:
+                st.markdown(f"**Top {len(results)} matching roles based on your resume**")
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                for i, (_, row) in enumerate(results.iterrows()):
+                    render_job_card(row, i)
+
+# ─────────────────────────────────────────────────────────────
 # MODULE 01 — Find matching jobs
 # ─────────────────────────────────────────────────────────────
 st.markdown('<div id="find-section"></div>', unsafe_allow_html=True)
@@ -899,4 +1043,4 @@ with st.container(border=True):
                 for _, row in results.iterrows():
                     render_lookup_card(row)
 
-render_footer()
+render_footer()      
