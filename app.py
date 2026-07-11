@@ -544,7 +544,7 @@ def lookup_job(job_name, top_n=3):
 # RESUME PARSING HELPERS
 # ─────────────────────────────────────────────────────────────
 def extract_text_from_resume(uploaded_file):
-    """PDF অথবা DOCX ফাইল থেকে raw text বের করে।"""
+    """PDF or DOCX file theke raw text ber kore."""
     try:
         if uploaded_file.name.lower().endswith('.pdf'):
             text = ""
@@ -558,13 +558,13 @@ def extract_text_from_resume(uploaded_file):
         else:
             return ""
     except Exception as e:
-        st.error(f"Resume পড়তে সমস্যা হয়েছে: {e}")
+        st.error(f"Resume porate somosya hoyeche: {e}")
         return ""
 
 
 @st.cache_data(show_spinner=False)
 def build_skill_vocabulary(_jobs):
-    """Dataset-এর required_skills কলাম থেকে একটা master skill vocabulary বানায়।"""
+    """Dataset-er required_skills column theke ekta master skill vocabulary banay."""
     skill_set = set()
     if 'required_skills' in _jobs.columns:
         for cell in _jobs['required_skills'].dropna():
@@ -576,7 +576,7 @@ def build_skill_vocabulary(_jobs):
 
 
 def extract_hard_skills(resume_text, skill_vocab):
-    """Resume text-এর মধ্যে vocabulary-র কোন কোন skill আছে সেটা খুঁজে বের করে।"""
+    """Resume text-er moddhe vocabulary-r kon kon skill ache seta khuje ber kore."""
     text_lower = resume_text.lower()
     found = []
     for skill in skill_vocab:
@@ -587,7 +587,7 @@ def extract_hard_skills(resume_text, skill_vocab):
 
 
 def extract_qualifications(resume_text):
-    """সহজ keyword-based degree/certification detection।"""
+    """Simple keyword-based degree/certification detection."""
     quals = [
         "Bachelor", "Master", "PhD", "MBA", "B.Sc", "M.Sc", "B.Tech", "M.Tech",
         "Diploma", "Certified", "Certification", "Associate Degree"
@@ -628,14 +628,14 @@ def render_navbar():
     st.markdown(f"""
     <div class="navbar">
       <div class="brand">
-        <span class="logo-mark">{logo_svg}</span>
-        <span class="brand-name">RoleSense</span>
+        <span class="logo-mark" onclick="if(window.showSplash){{window.showSplash();}}" style="cursor:pointer;" title="Back to home">{logo_svg}</span>
+        <span class="brand-name" onclick="if(window.showSplash){{window.showSplash();}}" style="cursor:pointer;">RoleSense</span>
       </div>
       <div class="links">
-        <a href="#resume-section">📄 Resume AI</a>
-        <a href="#find-section">🔍 Find matches</a>
-        <a href="#predict-section">📈 Salary AI</a>
-        <a href="#lookup-section">🧭 Role lookup</a>
+        <a href="#resume-section">Resume AI</a>
+        <a href="#find-section">Find matches</a>
+        <a href="#predict-section">Salary AI</a>
+        <a href="#lookup-section">Role lookup</a>
       </div>
       <a class="nav-cta" href="#resume-section">Get started</a>
     </div>
@@ -740,7 +740,7 @@ def render_job_card(row, idx):
         with bcol2:
             bookmark_key = f"bookmark_{idx}_{hashlib.md5((str(title)+str(company)).encode()).hexdigest()[:8]}"
             saved = st.session_state.get(bookmark_key, False)
-            label = "★ Saved" if saved else "☆ Save role"
+            label = "Saved" if saved else "Save role"
             if st.button(label, key=bookmark_key + "_btn", use_container_width=True):
                 st.session_state[bookmark_key] = not saved
                 st.rerun()
@@ -831,9 +831,272 @@ def render_footer():
     """, unsafe_allow_html=True)
 
 
+def render_splash_injector():
+    """Injects a full-screen branded splash / landing page that shows on first
+    load (auto-dismisses after 3 s) and whenever the navbar logo is clicked.
+    The splash shows the RoleSense branding image filling the ENTIRE viewport
+    (object-fit: cover), with the animated loading bar overlaid near the
+    bottom of the screen."""
+    import base64, pathlib
+    # Embed the landing image as base64 so the splash is fully self-contained.
+    # Place the branding image as either:
+    #   • assets/rolesense_logo.png   (preferred)
+    #   • rolesense_logo.png          (next to app.py)
+    _base = pathlib.Path(__file__).parent
+    _candidates = [
+        _base / "assets" / "rolesense_logo.png",
+        _base / "rolesense_logo.png",
+    ]
+    _img_src = ""
+    for _p in _candidates:
+        if _p.exists():
+            try:
+                _img_b64 = base64.b64encode(_p.read_bytes()).decode()
+                _img_src = f"data:image/png;base64,{_img_b64}"
+            except Exception:
+                pass
+            break
+
+    components.html(f"""
+    <script>
+    (function() {{
+        var doc   = window.parent.document;
+        var win   = window.parent;
+        var IMG_SRC = {repr(_img_src)};
+
+        /* ── Inject styles into PARENT document head ─────── */
+        if (!doc.getElementById('rs-splash-styles')) {{
+            var style = doc.createElement('style');
+            style.id  = 'rs-splash-styles';
+            style.textContent = [
+                /* force every ancestor to not clip our overlay */
+                '#rs-splash,#rs-splash *{{box-sizing:border-box;}}',
+
+                /* The overlay itself — must live in parent doc, cover true viewport */
+                '#rs-splash{{',
+                '  position:fixed!important;',
+                '  top:0!important;left:0!important;',
+                '  width:100vw!important;height:100vh!important;',
+                '  z-index:2147483647!important;',   /* max z-index */
+                '  display:flex;flex-direction:column;',
+                '  align-items:stretch;justify-content:flex-start;',
+                '  background:#030c18;',
+                '  font-family:Inter,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;',
+                '  opacity:0;',
+                '  transition:opacity .55s cubic-bezier(.4,0,.2,1);',
+                '  overflow:hidden;',
+                '  margin:0!important;padding:0!important;',
+                '  transform:none!important;',
+                '}}',
+
+                /* dot grid texture, sits above the full-bleed image */
+                '.rs-dots{{',
+                '  position:absolute;inset:0;pointer-events:none;z-index:1;',
+                '  background-image:radial-gradient(rgba(147,197,253,.10) 1px,transparent 1px);',
+                '  background-size:30px 30px;',
+                '}}',
+
+                /* top-left arc */
+                '.rs-arc-tl{{',
+                '  position:absolute;width:560px;height:560px;border-radius:50%;',
+                '  border:1px solid rgba(255,255,255,.14);',
+                '  top:-200px;left:-200px;pointer-events:none;z-index:1;',
+                '}}',
+                /* bottom-right arc */
+                '.rs-arc-br{{',
+                '  position:absolute;width:420px;height:420px;border-radius:50%;',
+                '  border:1px solid rgba(255,255,255,.12);',
+                '  bottom:-140px;right:-100px;pointer-events:none;z-index:1;',
+                '}}',
+
+                /* full-bleed image layer — fills the ENTIRE viewport, no letterboxing */
+                '.rs-image-layer{{',
+                '  position:absolute;top:0;left:0;right:0;bottom:0;',
+                '  z-index:2;',
+                '  display:flex;align-items:center;justify-content:center;',
+                '  overflow:hidden;',
+                '  opacity:0;transform:scale(1.04);',
+                '  transition:opacity .7s .12s cubic-bezier(.22,1,.36,1),',
+                '             transform .7s .12s cubic-bezier(.22,1,.36,1);',
+                '}}',
+                '.rs-image-layer.rs-visible{{opacity:1;transform:scale(1);}}',
+
+                /* the brand image itself, cropped to cover the whole viewport */
+                '#rs-img{{',
+                '  width:100%;height:100%;',
+                '  min-width:100%;min-height:100%;',
+                '  object-fit:cover;object-position:center;',
+                '  display:block;',
+                '  user-select:none;-webkit-user-drag:none;',
+                '}}',
+
+                /* fallback wordmark, sized big if no image is found */
+                '.rs-fallback{{',
+                '  font-size:min(9vw,6rem);font-weight:800;color:#F1F5F9;',
+                '  letter-spacing:-.03em;',
+                '}}',
+
+                /* subtle bottom scrim so the bar reads clearly over any image */
+                '.rs-scrim{{',
+                '  position:absolute;left:0;right:0;bottom:0;height:34vh;z-index:3;',
+                '  background:linear-gradient(180deg,rgba(3,12,24,0) 0%,rgba(3,12,24,.55) 55%,rgba(3,12,24,.92) 100%);',
+                '  pointer-events:none;',
+                '}}',
+
+                /* bar section — pinned near the bottom, overlaying the image */
+                '.rs-bar-section{{',
+                '  position:absolute;left:50%;bottom:64px;z-index:4;',
+                '  transform:translateX(-50%) translateY(14px);',
+                '  width:min(360px,72vw);',
+                '  display:flex;flex-direction:column;align-items:stretch;gap:9px;',
+                '  opacity:0;',
+                '  transition:opacity .6s .3s cubic-bezier(.22,1,.36,1),',
+                '             transform .6s .3s cubic-bezier(.22,1,.36,1);',
+                '}}',
+                '.rs-bar-section.rs-visible{{opacity:1;transform:translateX(-50%) translateY(0);}}',
+                '.rs-bar-label{{',
+                '  font-size:.7rem;font-weight:700;',
+                '  letter-spacing:.14em;text-transform:uppercase;',
+                '  color:rgba(255,255,255,.75);',
+                '  text-align:center;',
+                '  text-shadow:0 1px 6px rgba(0,0,0,.5);',
+                '}}',
+                '.rs-track{{',
+                '  width:100%;height:2px;',  /* slim, refined */
+                '  background:rgba(255,255,255,.16);',
+                '  border-radius:99px;overflow:hidden;position:relative;',
+                '}}',
+                '.rs-fill{{',
+                '  position:absolute;left:0;top:0;bottom:0;',
+                '  width:0%;border-radius:99px;',
+                '  background:linear-gradient(90deg,#1e40af 0%,#3b82f6 45%,#60a5fa 75%,#bfdbfe 100%);',
+                '  transition:width .28s linear;',
+                '  box-shadow:0 0 10px rgba(96,165,250,.55),0 0 22px rgba(59,130,246,.25);',
+                '}}',
+                /* shimmer sweep */
+                '.rs-fill::after{{',
+                '  content:"";',
+                '  position:absolute;top:0;bottom:0;left:-70%;width:70%;',
+                '  background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);',
+                '  animation:rs-shim 1.2s linear infinite;',
+                '}}',
+                '@keyframes rs-shim{{from{{left:-70%}}to{{left:120%}}}}',
+
+                /* pct counter */
+                '.rs-pct{{',
+                '  font-size:.66rem;font-weight:700;',
+                '  letter-spacing:.05em;',
+                '  color:rgba(191,219,254,.85);',
+                '  text-align:right;',
+                '  font-variant-numeric:tabular-nums;',
+                '}}',
+            ].join('');
+            doc.head.appendChild(style);
+        }}
+
+        /* ── Inject overlay into PARENT document body ────── */
+        if (!doc.getElementById('rs-splash')) {{
+            var el = doc.createElement('div');
+            el.id  = 'rs-splash';
+            el.innerHTML =
+                '<div class="rs-image-layer" id="rs-image-layer">' +
+                  (IMG_SRC
+                    ? '<img id="rs-img" src="' + IMG_SRC + '" alt="RoleSense" draggable="false">'
+                    : '<div class="rs-fallback">RoleSense</div>'
+                  ) +
+                '</div>' +
+                '<div class="rs-dots"></div>' +
+                '<div class="rs-arc-tl"></div>' +
+                '<div class="rs-arc-br"></div>' +
+                '<div class="rs-scrim"></div>' +
+                '<div class="rs-bar-section" id="rs-inner">' +
+                  '<div class="rs-bar-label" id="rs-label">Initializing</div>' +
+                  '<div class="rs-track"><div class="rs-fill" id="rs-fill"></div></div>' +
+                  '<div class="rs-pct" id="rs-pct">0%</div>' +
+                '</div>';
+            /* prepend so it's on top of everything */
+            doc.body.insertBefore(el, doc.body.firstChild);
+        }}
+
+        /* ── Core runner ─────────────────────────────────── */
+        function runSplash(duration) {{
+            var overlay   = doc.getElementById('rs-splash');
+            var imageLayer= doc.getElementById('rs-image-layer');
+            var inner     = doc.getElementById('rs-inner');
+            var fill      = doc.getElementById('rs-fill');
+            var pctEl     = doc.getElementById('rs-pct');
+            var labelEl   = doc.getElementById('rs-label');
+            if (!overlay) return;
+
+            var labels = ['Initializing','Loading models','Calibrating engine','Almost ready','Launching'];
+            var labelIdx = 0;
+
+            /* ── show overlay ── */
+            overlay.style.cssText += ';display:flex!important;';
+            /* force body not to scroll while splash is up */
+            doc.body.style.overflow = 'hidden';
+
+            requestAnimationFrame(function() {{
+                overlay.style.opacity = '1';
+                if (imageLayer) imageLayer.classList.add('rs-visible');
+                if (inner) inner.classList.add('rs-visible');
+            }});
+
+            /* scroll to top */
+            try {{ win.scrollTo({{top:0,behavior:'instant'}}); }} catch(e) {{}}
+
+            /* label cycling */
+            var labelTimer = setInterval(function() {{
+                labelIdx = Math.min(labelIdx + 1, labels.length - 1);
+                if (labelEl) labelEl.textContent = labels[labelIdx];
+            }}, duration / labels.length);
+
+            /* rAF-driven progress with ease-out-cubic */
+            var t0 = performance.now();
+            function tick() {{
+                var t = Math.min((performance.now() - t0) / duration, 1);
+                var pct = Math.round((1 - Math.pow(1 - t, 2.8)) * 100);
+                if (fill)   fill.style.width  = pct + '%';
+                if (pctEl)  pctEl.textContent = pct + '%';
+                if (t < 1) {{ requestAnimationFrame(tick); }}
+                else        {{ dismiss(); }}
+            }}
+            requestAnimationFrame(tick);
+
+            function dismiss() {{
+                clearInterval(labelTimer);
+                overlay.style.opacity = '0';
+                if (imageLayer) imageLayer.classList.remove('rs-visible');
+                if (inner) inner.classList.remove('rs-visible');
+                setTimeout(function() {{
+                    overlay.style.display = 'none';
+                    doc.body.style.overflow = '';
+                    if (fill)    fill.style.width    = '0%';
+                    if (pctEl)   pctEl.textContent   = '0%';
+                    if (labelEl) labelEl.textContent  = labels[0];
+                }}, 560);
+            }}
+        }}
+
+        /* ── Auto-run on first page load ─────────────────── */
+        if (!win.__rsSplashShown) {{
+            win.__rsSplashShown = true;
+            /* slight delay so DOM is ready */
+            setTimeout(function() {{ runSplash(3000); }}, 80);
+        }}
+
+        /* ── Expose for logo / brand-name clicks ─────────── */
+        win.showSplash = function() {{ runSplash(3000); }};
+
+    }})();
+    </script>
+    """, height=0)
+
+
 # ═════════════════════════════════════════════════════════════
 # PAGE ASSEMBLY
 # ═════════════════════════════════════════════════════════════
+render_splash_injector()
 render_navbar()
 render_hero()
 render_stats(compute_dataset_stats(jobs))
@@ -860,7 +1123,7 @@ with st.container(border=True):
 
     if analyze_clicked:
         if not uploaded_resume:
-            st.warning("দয়া করে একটা resume আপলোড করুন।")
+            st.warning("Please upload a resume file first.")
         else:
             with st.status("Analyzing your resume...", expanded=False) as status:
                 st.write("Extracting text from file...")
@@ -868,7 +1131,7 @@ with st.container(border=True):
 
                 if not resume_text.strip():
                     status.update(label="Couldn't extract text.", state="error")
-                    st.error("এই ফাইল থেকে টেক্সট বের করা যায়নি। অন্য ফাইল ট্রাই করুন।")
+                    st.error("Couldn't extract text from the uploaded file. Please try another file.")
                     st.stop()
 
                 status.update(label="Extracting hard skills...")
@@ -886,7 +1149,6 @@ with st.container(border=True):
 
                 status.update(label="Analysis complete.", state="complete")
 
-            # ── এক্সট্র্যাক্টেড ডেটা দেখানো ──
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -913,9 +1175,8 @@ with st.container(border=True):
 
             st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
 
-            # ── Top role matches ──
             if results.empty:
-                render_empty_state("Resume থেকে কোনো matching role পাওয়া যায়নি।")
+                render_empty_state("No matching roles found from resume.")
             else:
                 st.markdown(f"**Top {len(results)} matching roles based on your resume**")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
