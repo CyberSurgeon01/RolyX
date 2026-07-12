@@ -1,5 +1,6 @@
 import pdfplumber
 import docx
+import os
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -13,6 +14,7 @@ import sys
 import scipy.sparse as sp
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import hstack, csr_matrix
+from huggingface_hub import hf_hub_download
 
 from features import skill_gap, compare, export
 
@@ -41,6 +43,12 @@ st.set_page_config(
 )
 
 MODELS_DIR = "models/"
+HF_REPO_ID = "rahulchandrashil/RoleSense"   # Hugging Face model repo holding the .pkl/.npz/.csv files
+HF_FILENAMES = [
+    "tfidf_vectorizer.pkl", "tfidf_matrix.npz", "salary_model.pkl",
+    "title_tfidf.pkl", "le_exp.pkl", "le_wtype.pkl", "cat_model.pkl",
+    "cat_tfidf.pkl", "le_industry.pkl", "enriched_jobs.csv",
+]
 APP_VERSION = "2.1"
 MAX_RESUME_MB = 5
 MAX_RESUME_BYTES = MAX_RESUME_MB * 1024 * 1024
@@ -374,10 +382,25 @@ def inject_css() -> None:
         [data-testid="stMetricLabel"] { color: var(--muted); font-weight: 500; font-size: 0.8rem; }
 
         /* ── Footer ───────────────────────────────────────── */
-        .app-footer { margin-top: 56px; padding: 24px 0 4px; border-top: 1px solid var(--border); }
-        .footer-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .app-footer { margin-top: 56px; padding: 28px 0 6px; border-top: 1px solid var(--border); }
+        .footer-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
         .footer-brand { font-size: 0.85rem; font-weight: 700; color: var(--ink); }
         .footer-meta { font-size: 0.78rem; color: var(--muted); }
+        .footer-notes {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+        .footer-note { display: flex; gap: 10px; align-items: flex-start; }
+        .footer-note i {
+            flex-shrink: 0; margin-top: 2px; font-size: 0.85rem; color: var(--accent); opacity: 0.85;
+        }
+        .footer-note-text { font-size: 0.76rem; color: var(--muted); line-height: 1.55; }
+        @media (max-width: 760px) {
+            .footer-notes { grid-template-columns: 1fr; gap: 14px; }
+        }
 
         /* ── Responsive ───────────────────────────────────── */
         @media (max-width: 900px) {
@@ -400,26 +423,42 @@ inject_css()
 # ═════════════════════════════════════════════════════════════
 # MODEL / DATA LOADING
 # ═════════════════════════════════════════════════════════════
+def _resolve_model_path(filename: str) -> str:
+    """Returns a local filesystem path for a model/data file.
+
+    Checks the local `models/` folder first (unchanged local dev workflow).
+    If not found there, downloads it from the Hugging Face Hub repo and
+    returns the path to HF's local cache — hf_hub_download caches on disk,
+    so this only downloads once, not on every rerun/restart.
+    """
+    local_path = MODELS_DIR + filename
+    if os.path.exists(local_path):
+        return local_path
+    return hf_hub_download(repo_id=HF_REPO_ID, filename=filename)
+
+
 @st.cache_resource(show_spinner="Loading models...")
 def load_all():
-    with open(MODELS_DIR + "tfidf_vectorizer.pkl", "rb") as f:
+    paths = {name: _resolve_model_path(name) for name in HF_FILENAMES}
+
+    with open(paths["tfidf_vectorizer.pkl"], "rb") as f:
         tfidf = pickle.load(f)
-    tfidf_matrix = sp.load_npz(MODELS_DIR + "tfidf_matrix.npz")
-    with open(MODELS_DIR + "salary_model.pkl", "rb") as f:
+    tfidf_matrix = sp.load_npz(paths["tfidf_matrix.npz"])
+    with open(paths["salary_model.pkl"], "rb") as f:
         salary_model = pickle.load(f)
-    with open(MODELS_DIR + "title_tfidf.pkl", "rb") as f:
+    with open(paths["title_tfidf.pkl"], "rb") as f:
         title_tfidf = pickle.load(f)
-    with open(MODELS_DIR + "le_exp.pkl", "rb") as f:
+    with open(paths["le_exp.pkl"], "rb") as f:
         le_exp = pickle.load(f)
-    with open(MODELS_DIR + "le_wtype.pkl", "rb") as f:
+    with open(paths["le_wtype.pkl"], "rb") as f:
         le_wtype = pickle.load(f)
-    with open(MODELS_DIR + "cat_model.pkl", "rb") as f:
+    with open(paths["cat_model.pkl"], "rb") as f:
         cat_model = pickle.load(f)
-    with open(MODELS_DIR + "cat_tfidf.pkl", "rb") as f:
+    with open(paths["cat_tfidf.pkl"], "rb") as f:
         cat_tfidf = pickle.load(f)
-    with open(MODELS_DIR + "le_industry.pkl", "rb") as f:
+    with open(paths["le_industry.pkl"], "rb") as f:
         le_industry = pickle.load(f)
-    jobs = pd.read_csv(MODELS_DIR + "enriched_jobs.csv", low_memory=False)
+    jobs = pd.read_csv(paths["enriched_jobs.csv"], low_memory=False)
     jobs.reset_index(drop=True, inplace=True)
     return (tfidf, tfidf_matrix, salary_model, title_tfidf,
             le_exp, le_wtype, cat_model, cat_tfidf, le_industry, jobs)
@@ -431,8 +470,9 @@ try:
 except FileNotFoundError as e:
     logger.error("Model/data file missing: %s", e.filename, exc_info=True)
     st.error(
-        f"Couldn't load one of the model/data files from `{MODELS_DIR}` "
-        f"({e.filename}). Make sure the `models/` folder is present next to this app."
+        f"Couldn't load one of the model/data files "
+        f"({e.filename}). Make sure the `models/` folder is present next to this app, "
+        f"or that the Hugging Face repo `{HF_REPO_ID}` is reachable."
     )
     st.stop()
 except Exception:
@@ -832,7 +872,7 @@ def render_job_card(row, idx, section="job", user_skills=None):
             compare.render_compare_toggle(row, idx, section)
 
 
-def render_lookup_card(row):
+def render_lookup_card(row, idx):
     score = row.get('match_score', 0)
     title = row.get('title', 'N/A')
     company = row.get('company_name', 'Unknown')
@@ -903,6 +943,9 @@ def render_lookup_card(row):
             desc_text = str(row.get('description', 'Not available'))
             st.write(desc_text[:2500] + ("..." if len(desc_text) > 2500 else ""))
 
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        compare.render_compare_toggle(row, idx, "lookup")
+
     st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
 
 
@@ -911,7 +954,21 @@ def render_footer():
     <div class="app-footer">
       <div class="footer-row">
         <span class="footer-brand">RoleSense</span>
-        <span class="footer-meta">v{esc(APP_VERSION)} · Built with Streamlit + scikit-learn · Estimates are informational, not guarantees</span>
+        <span class="footer-meta">v{esc(APP_VERSION)}</span>
+      </div>
+      <div class="footer-notes">
+        <div class="footer-note">
+          <i class="bi bi-info-circle"></i>
+          <span class="footer-note-text">Salary and industry predictions are estimates based on patterns in the training dataset — a directional starting point, not an offer or guarantee.</span>
+        </div>
+        <div class="footer-note">
+          <i class="bi bi-shield-check"></i>
+          <span class="footer-note-text">Your resume and search inputs are processed in memory for this session only — never stored or shared.</span>
+        </div>
+        <div class="footer-note">
+          <i class="bi bi-database"></i>
+          <span class="footer-note-text">Job data reflects a static snapshot of {len(jobs):,} listings, not live postings — figures may not match current market conditions.</span>
+        </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1215,11 +1272,13 @@ with st.container(border=True):
     if analyze_clicked:
         if not uploaded_resume:
             st.warning("Please upload a resume file first.")
+            st.session_state.pop("resume_results", None)
         elif uploaded_resume.size > MAX_RESUME_BYTES:
             st.warning(
                 f"That file is {uploaded_resume.size / (1024*1024):.1f}MB — "
                 f"please upload a resume under {MAX_RESUME_MB}MB."
             )
+            st.session_state.pop("resume_results", None)
         else:
             with st.status("Analyzing your resume...", expanded=False) as status:
                 st.write("Extracting text from file...")
@@ -1228,6 +1287,7 @@ with st.container(border=True):
                 if not resume_text.strip():
                     status.update(label="Couldn't extract text.", state="error")
                     st.error("Couldn't extract text from the uploaded file. Please try another file.")
+                    st.session_state.pop("resume_results", None)
                     st.stop()
 
                 status.update(label="Extracting hard skills...")
@@ -1358,6 +1418,7 @@ with st.container(border=True):
     if find_clicked:
         if not user_skills.strip():
             st.warning("Please enter at least one skill.")
+            st.session_state.pop("find_results", None)
         else:
             with st.status("Running match engine...", expanded=False) as status:
                 st.write("Parsing your skill profile...")
@@ -1515,6 +1576,7 @@ with st.container(border=True):
     if lookup_clicked:
         if not job_name.strip():
             st.warning("Please enter a job title.")
+            st.session_state.pop("lookup_results", None)
         else:
             with st.spinner("Looking up typical role details..."):
                 results = lookup_job(job_name, top_n=top_n_lookup)
@@ -1526,8 +1588,8 @@ with st.container(border=True):
         if results.empty:
             render_empty_state("No close matches for that title. Try a broader or more common job name.")
         else:
-            for _, row in results.iterrows():
-                render_lookup_card(row)
+            for i, (_, row) in enumerate(results.iterrows()):
+                render_lookup_card(row, i)
 
 st.markdown('<div id="compare-section"></div>', unsafe_allow_html=True)
 render_section_header(
