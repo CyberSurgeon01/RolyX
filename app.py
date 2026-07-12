@@ -1020,6 +1020,7 @@ def render_splash_injector():
                 '  position:fixed!important;',
                 '  top:0!important;left:0!important;',
                 '  width:100vw!important;height:100vh!important;',
+                '  height:100dvh!important;',
                 '  z-index:2147483647!important;',   /* max z-index */
                 '  display:flex;flex-direction:column;',
                 '  align-items:stretch;justify-content:flex-start;',
@@ -1182,7 +1183,10 @@ def render_splash_injector():
 
             /* ── show overlay ── */
             overlay.style.cssText += ';display:flex!important;';
-            /* force body not to scroll while splash is up */
+            /* force body/html not to scroll while splash is up (locking body
+               alone isn't reliable on mobile Safari/Chrome, which can still
+               rubber-band the outer <html> element) */
+            doc.documentElement.style.overflow = 'hidden';
             doc.body.style.overflow = 'hidden';
 
             requestAnimationFrame(function() {{
@@ -1219,6 +1223,7 @@ def render_splash_injector():
                 if (inner) inner.classList.remove('rs-visible');
                 setTimeout(function() {{
                     overlay.style.display = 'none';
+                    doc.documentElement.style.overflow = '';
                     doc.body.style.overflow = '';
                     if (fill)    fill.style.width    = '0%';
                     if (pctEl)   pctEl.textContent   = '0%';
