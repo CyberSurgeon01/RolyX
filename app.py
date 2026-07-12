@@ -14,6 +14,8 @@ import scipy.sparse as sp
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import hstack, csr_matrix
 
+from features import skill_gap, compare, export
+
 # ═════════════════════════════════════════════════════════════
 # LOGGING — server-side only, never shown to the end user.
 # Streamlit's default logger is easy to lose in noisy console output,
@@ -692,6 +694,7 @@ def render_navbar():
         <a href="#find-section">Find matches</a>
         <a href="#predict-section">Salary AI</a>
         <a href="#lookup-section">Role lookup</a>
+        <a href="#compare-section">Compare</a>
       </div>
       <a class="nav-cta" href="#resume-section">Get started</a>
     </div>
@@ -758,7 +761,7 @@ def stable_job_key(row) -> str:
     return hashlib.md5(fingerprint.encode()).hexdigest()[:12]
 
 
-def render_job_card(row, idx, section="job"):
+def render_job_card(row, idx, section="job", user_skills=None):
     score = row.get('match_score', 0)
     title = row.get('title', 'N/A')
     company = row.get('company_name', 'Unknown')
@@ -802,7 +805,13 @@ def render_job_card(row, idx, section="job"):
         </div>
         """, unsafe_allow_html=True)
 
-        bcol1, bcol2 = st.columns([1, 1])
+        # Skill-gap panel — only shown when the caller supplied the user's
+        # skills (resume text or the "Find matches" skills field).
+        if user_skills:
+            with st.expander("Skill gap for this role", expanded=False):
+                skill_gap.render_skill_gap(user_skills, row)
+
+        bcol1, bcol2, bcol3 = st.columns([1, 1, 1])
         with bcol1:
             with st.expander("View full description"):
                 desc_text = str(row.get('description', 'Not available'))
@@ -819,6 +828,8 @@ def render_job_card(row, idx, section="job"):
             if st.button(label, key=bookmark_key + "_btn", use_container_width=True):
                 st.session_state[bookmark_key] = not saved
                 st.rerun()
+        with bcol3:
+            compare.render_compare_toggle(row, idx, section)
 
 
 def render_lookup_card(row):
@@ -1178,6 +1189,7 @@ except Exception:
 render_navbar()
 render_hero()
 render_stats(compute_dataset_stats(jobs))
+compare.render_compare_bar()
 
 # ─────────────────────────────────────────────────────────────
 # MODULE 00 — Resume upload & auto-match
@@ -1233,39 +1245,63 @@ with st.container(border=True):
 
                 status.update(label="Analysis complete.", state="complete")
 
-            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown(f"""
-                <div class="info-card">
-                  <div class="ic-label">Hard skills found ({len(hard_skills)})</div>
-                  <div>{tags_html(hard_skills)}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with c2:
-                st.markdown(f"""
-                <div class="info-card">
-                  <div class="ic-label">Soft skills found ({len(soft_skills)})</div>
-                  <div>{tags_html(soft_skills)}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with c3:
-                st.markdown(f"""
-                <div class="info-card">
-                  <div class="ic-label">Qualifications found ({len(qualifications)})</div>
-                  <div>{tags_html(qualifications)}</div>
-                </div>
-                """, unsafe_allow_html=True)
+            # Persist across reruns (e.g. when "Add to compare" / "Save role"
+            # is clicked below, which triggers st.rerun() on the whole app).
+            st.session_state["resume_results"] = results
+            st.session_state["resume_hard_skills"] = hard_skills
+            st.session_state["resume_soft_skills"] = soft_skills
+            st.session_state["resume_qualifications"] = qualifications
 
-            st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+    # Render from session_state (not a local variable) so results survive
+    # reruns triggered by compare/bookmark buttons inside the job cards.
+    if "resume_results" in st.session_state:
+        results = st.session_state["resume_results"]
+        hard_skills = st.session_state["resume_hard_skills"]
+        soft_skills = st.session_state["resume_soft_skills"]
+        qualifications = st.session_state["resume_qualifications"]
 
-            if results.empty:
-                render_empty_state("No matching roles found from resume.")
-            else:
-                st.markdown(f"**Top {len(results)} matching roles based on your resume**")
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                for i, (_, row) in enumerate(results.iterrows()):
-                    render_job_card(row, i, section="resume")
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(f"""
+            <div class="info-card">
+              <div class="ic-label">Hard skills found ({len(hard_skills)})</div>
+              <div>{tags_html(hard_skills)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""
+            <div class="info-card">
+              <div class="ic-label">Soft skills found ({len(soft_skills)})</div>
+              <div>{tags_html(soft_skills)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with c3:
+            st.markdown(f"""
+            <div class="info-card">
+              <div class="ic-label">Qualifications found ({len(qualifications)})</div>
+              <div>{tags_html(qualifications)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+
+        if results.empty:
+            render_empty_state("No matching roles found from resume.")
+        else:
+            st.markdown(f"**Top {len(results)} matching roles based on your resume**")
+            dl1, dl2 = st.columns(2)
+            with dl1:
+                export.render_csv_download_button(results, "rolesense_resume_matches.csv", key="resume_csv")
+            with dl2:
+                export.render_pdf_download_button(
+                    results, "rolesense_resume_matches.pdf", key="resume_pdf",
+                    report_title="RoleSense — Resume Matches"
+                )
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            resume_skill_set = ", ".join(hard_skills)
+            for i, (_, row) in enumerate(results.iterrows()):
+                render_job_card(row, i, section="resume", user_skills=resume_skill_set)
 
 # ─────────────────────────────────────────────────────────────
 # MODULE 01 — Find matching jobs
@@ -1336,13 +1372,32 @@ with st.container(border=True):
                 )
                 status.update(label=f"Done — {len(results)} matches ranked.", state="complete")
 
-            if results.empty:
-                render_empty_state("No matches found. Try loosening a filter or adding a few more skills.")
-            else:
-                st.markdown(f"**{len(results)} suggested matches**")
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                for i, (_, row) in enumerate(results.iterrows()):
-                    render_job_card(row, i, section="find")
+            # Persist across reruns (e.g. when "Add to compare" / "Save role"
+            # is clicked below, which triggers st.rerun() on the whole app).
+            st.session_state["find_results"] = results
+            st.session_state["find_user_skills"] = user_skills
+
+    # Render from session_state (not a local variable) so results survive
+    # reruns triggered by compare/bookmark buttons inside the job cards.
+    if "find_results" in st.session_state:
+        results = st.session_state["find_results"]
+        skills_for_gap = st.session_state["find_user_skills"]
+
+        if results.empty:
+            render_empty_state("No matches found. Try loosening a filter or adding a few more skills.")
+        else:
+            st.markdown(f"**{len(results)} suggested matches**")
+            dl1, dl2 = st.columns(2)
+            with dl1:
+                export.render_csv_download_button(results, "rolesense_matches.csv", key="find_csv")
+            with dl2:
+                export.render_pdf_download_button(
+                    results, "rolesense_matches.pdf", key="find_pdf",
+                    report_title="RoleSense — Job Matches"
+                )
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            for i, (_, row) in enumerate(results.iterrows()):
+                render_job_card(row, i, section="find", user_skills=skills_for_gap)
 
 # ─────────────────────────────────────────────────────────────
 # MODULE 02 — Predict salary & industry
@@ -1428,6 +1483,12 @@ with st.container(border=True):
             )
             st.markdown(panel_html, unsafe_allow_html=True)
 
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+            export.render_salary_pdf_button(
+                description, exp_level, wt_sel, med, low, high, industries,
+                key="salary_pdf"
+            )
+
 # ─────────────────────────────────────────────────────────────
 # MODULE 03 — Job lookup
 # ─────────────────────────────────────────────────────────────
@@ -1457,11 +1518,23 @@ with st.container(border=True):
         else:
             with st.spinner("Looking up typical role details..."):
                 results = lookup_job(job_name, top_n=top_n_lookup)
+            # Persist across reruns triggered elsewhere on the page.
+            st.session_state["lookup_results"] = results
 
-            if results.empty:
-                render_empty_state("No close matches for that title. Try a broader or more common job name.")
-            else:
-                for _, row in results.iterrows():
-                    render_lookup_card(row)
+    if "lookup_results" in st.session_state:
+        results = st.session_state["lookup_results"]
+        if results.empty:
+            render_empty_state("No close matches for that title. Try a broader or more common job name.")
+        else:
+            for _, row in results.iterrows():
+                render_lookup_card(row)
+
+st.markdown('<div id="compare-section"></div>', unsafe_allow_html=True)
+render_section_header(
+    "SIDE BY SIDE", "Compare jobs",
+    f"Jobs you've queued for comparison (up to {compare.MAX_COMPARE} at a time) — "
+    "use \"Add to compare\" on any job card above."
+)
+compare.render_compare_section()
 
 render_footer()
