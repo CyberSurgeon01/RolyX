@@ -1,6 +1,6 @@
-# RoleSense — AI Career Matching
+# Rolyx — AI Career Matching
 
-RoleSense is a Streamlit web app that helps job seekers match their skills against real job market data, estimate salaries from job descriptions, look up typical requirements for any role, and now — analyze a resume directly to find the best-fit jobs.
+Rolyx is a Streamlit web app that helps job seekers match their skills against real job market data, estimate salaries from job descriptions, look up typical requirements for any role, and now — analyze a resume directly to find the best-fit jobs.
 
 ---
 

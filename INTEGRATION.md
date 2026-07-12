@@ -1,4 +1,4 @@
-# RoleSense — Integration Guide
+# Rolyx — Integration Guide
 
 New files, drop these next to `app.py`:
 
@@ -190,7 +190,7 @@ Replace with:
                 with dl2:
                     export.render_pdf_download_button(
                         results, "rolesense_resume_matches.pdf", key="resume_pdf",
-                        report_title="RoleSense — Resume Matches"
+                        report_title="Rolyx — Resume Matches"
                     )
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 resume_skill_set = ", ".join(hard_skills)
@@ -223,7 +223,7 @@ Replace with:
                 with dl2:
                     export.render_pdf_download_button(
                         results, "rolesense_matches.pdf", key="find_pdf",
-                        report_title="RoleSense — Job Matches"
+                        report_title="Rolyx — Job Matches"
                     )
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 for i, (_, row) in enumerate(results.iterrows()):

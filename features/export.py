@@ -1,5 +1,5 @@
 """
-Export helpers for RoleSense — CSV export of job result sets, and PDF
+Export helpers for Rolyx — CSV export of job result sets, and PDF
 export of either a job result set or a single salary-prediction report.
 
 CSV export only needs pandas (already an app.py dependency).
@@ -80,7 +80,7 @@ def _pdf_unavailable_notice():
     )
 
 
-def jobs_to_pdf_bytes(results: pd.DataFrame, report_title: str = "RoleSense Job Matches") -> bytes:
+def jobs_to_pdf_bytes(results: pd.DataFrame, report_title: str = "Rolyx Job Matches") -> bytes:
     """Builds a tabular PDF report of job results using reportlab. Long
     text fields are truncated so rows stay readable in a table cell."""
     if not _REPORTLAB_AVAILABLE:
@@ -142,7 +142,7 @@ def jobs_to_pdf_bytes(results: pd.DataFrame, report_title: str = "RoleSense Job 
 
 
 def render_pdf_download_button(results: pd.DataFrame, filename: str, key: str,
-                                report_title: str = "RoleSense Job Matches"):
+                                report_title: str = "Rolyx Job Matches"):
     """Convenience wrapper for a PDF download button. No-ops on empty
     results; shows an install hint if reportlab isn't available."""
     if results is None or results.empty:
@@ -189,7 +189,7 @@ def salary_report_to_pdf_bytes(description_snippet: str, exp_level: str, work_ty
     ]))
 
     story = [
-        Paragraph("RoleSense Salary Estimate", title_style),
+        Paragraph("Rolyx Salary Estimate", title_style),
         Paragraph("Experience level / Work type", label_style),
         Paragraph(html.escape(f"{exp_level} \u00b7 {work_type}"), value_style),
         Paragraph("Estimated range", label_style),

@@ -1,5 +1,5 @@
 """
-Skill-gap analysis for RoleSense.
+Skill-gap analysis for Rolyx.
 
 Given a user's skill set (list or comma-separated string) and a job row
 (pandas Series with a 'required_skills' column, comma-separated), this

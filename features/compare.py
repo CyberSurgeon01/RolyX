@@ -1,5 +1,5 @@
 """
-Side-by-side job comparison for RoleSense.
+Side-by-side job comparison for Rolyx.
 
 Users can add up to MAX_COMPARE jobs from any results list (resume matches,
 skills search, lookup) into a comparison tray held in st.session_state, then

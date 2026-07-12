@@ -36,7 +36,7 @@ if not logger.handlers:
 # PAGE CONFIG
 # ═════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="RoleSense — AI Career Matching",
+    page_title="Rolyx — AI Career Matching",
     page_icon="◆",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -480,7 +480,7 @@ except Exception:
     # but do capture the real error server-side so it's debuggable.
     logger.error("Failed to load models/data on startup", exc_info=True)
     st.error(
-        "RoleSense couldn't start because the model/data files failed to load. "
+        "Rolyx couldn't start because the model/data files failed to load. "
         "Please contact support or check the deployment logs for details."
     )
     st.stop()
@@ -727,7 +727,7 @@ def render_navbar():
     <div class="navbar">
       <div class="brand">
         <a class="logo-mark" href="." style="cursor:pointer; text-decoration:none;" title="Back to home">{logo_svg}</a>
-        <a class="brand-name" href="." style="cursor:pointer; text-decoration:none;">RoleSense</a>
+        <a class="brand-name" href="." style="cursor:pointer; text-decoration:none;">Rolyx</a>
       </div>
       <div class="links">
         <a href="#resume-section">Resume AI</a>
@@ -953,7 +953,7 @@ def render_footer():
     st.markdown(f"""
     <div class="app-footer">
       <div class="footer-row">
-        <span class="footer-brand">RoleSense</span>
+        <span class="footer-brand">Rolyx</span>
         <span class="footer-meta">v{esc(APP_VERSION)}</span>
       </div>
       <div class="footer-notes">
@@ -977,7 +977,7 @@ def render_footer():
 def render_splash_injector():
     """Injects a full-screen branded splash / landing page that shows on first
     load (auto-dismisses after 3 s) and whenever the navbar logo is clicked.
-    The splash shows the RoleSense branding image filling the ENTIRE viewport
+    The splash shows the Rolyx branding image filling the ENTIRE viewport
     (object-fit: cover), with the animated loading bar overlaid near the
     bottom of the screen."""
     import base64, pathlib
@@ -1073,6 +1073,15 @@ def render_splash_injector():
                 '  user-select:none;-webkit-user-drag:none;',
                 '}}',
 
+                /* On narrow/tall (mobile) viewports the 1536x1024 landscape image gets
+                   crushed by object-fit:cover — the sides get cropped off to fill the
+                   tall screen, cutting the logo/wordmark. Switch to contain so the whole
+                   image is visible, letterboxed on a matching dark background instead. */
+                '@media (max-width: 700px), (max-aspect-ratio: 4/5) {{',
+                '  .rs-image-layer{{ background:#030c18; }}',
+                '  #rs-img{{ object-fit:contain; }}',
+                '}}',
+
                 /* fallback wordmark, sized big if no image is found */
                 '.rs-fallback{{',
                 '  font-size:min(9vw,6rem);font-weight:800;color:#F1F5F9;',
@@ -1144,8 +1153,8 @@ def render_splash_injector():
             el.innerHTML =
                 '<div class="rs-image-layer" id="rs-image-layer">' +
                   (IMG_SRC
-                    ? '<img id="rs-img" src="' + IMG_SRC + '" alt="RoleSense" draggable="false">'
-                    : '<div class="rs-fallback">RoleSense</div>'
+                    ? '<img id="rs-img" src="' + IMG_SRC + '" alt="Rolyx" draggable="false">'
+                    : '<div class="rs-fallback">Rolyx</div>'
                   ) +
                 '</div>' +
                 '<div class="rs-scrim"></div>' +
@@ -1254,7 +1263,7 @@ compare.render_compare_bar()
 st.markdown('<div id="resume-section"></div>', unsafe_allow_html=True)
 render_section_header(
     "GET STARTED", "Upload your resume",
-    "Upload a PDF or DOCX resume — RoleSense extracts your skills and instantly matches you against real roles."
+    "Upload a PDF or DOCX resume — Rolyx extracts your skills and instantly matches you against real roles."
 )
 
 skill_vocab = build_skill_vocabulary(jobs)
@@ -1356,7 +1365,7 @@ with st.container(border=True):
             with dl2:
                 export.render_pdf_download_button(
                     results, "rolesense_resume_matches.pdf", key="resume_pdf",
-                    report_title="RoleSense — Resume Matches"
+                    report_title="Rolyx — Resume Matches"
                 )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             resume_skill_set = ", ".join(hard_skills)
@@ -1369,7 +1378,7 @@ with st.container(border=True):
 st.markdown('<div id="find-section"></div>', unsafe_allow_html=True)
 render_section_header(
     "SKILLS MATCH", "Find your best-fit roles",
-    "Enter your skills and RoleSense surfaces roles from the dataset you're likely to match well with."
+    "Enter your skills and Rolyx surfaces roles from the dataset you're likely to match well with."
 )
 
 with st.container(border=True):
@@ -1454,7 +1463,7 @@ with st.container(border=True):
             with dl2:
                 export.render_pdf_download_button(
                     results, "rolesense_matches.pdf", key="find_pdf",
-                    report_title="RoleSense — Job Matches"
+                    report_title="Rolyx — Job Matches"
                 )
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             for i, (_, row) in enumerate(results.iterrows()):
@@ -1466,7 +1475,7 @@ with st.container(border=True):
 st.markdown('<div id="predict-section"></div>', unsafe_allow_html=True)
 render_section_header(
     "SALARY INSIGHTS", "Predict salary & industry",
-    "Paste any job description and RoleSense estimates its pay range and the most likely industries."
+    "Paste any job description and Rolyx estimates its pay range and the most likely industries."
 )
 
 with st.container(border=True):
