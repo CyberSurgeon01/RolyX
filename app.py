@@ -1611,6 +1611,6 @@ render_section_header(
     f"Jobs you've queued for comparison (up to {compare.MAX_COMPARE} at a time) — "
     "use \"Add to compare\" on any job card above."
 )
-compare.render_compare_section()
+compare.render_compare_section() 
 
 render_footer()
